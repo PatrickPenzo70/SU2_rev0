@@ -1704,18 +1704,39 @@ void CIncEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_cont
       /*--- Implicit part ---*/
 
       if (implicit) Jacobian.AddBlock2Diag(iPoint, residual.jacobian_i);
+      
+      if (iPoint == 0) {
+      std::cout << "### STO ESEGUENDO IL MIO CIncEulerSolver MODIFICATO ###" << std::endl;
+      }
 
       if (vol_heat) {
 
-        if(solver_container[RAD_SOL]->GetNodes()->GetVol_HeatSource(iPoint)) {
+  const su2double Volume = geometry->nodes->GetVolume(iPoint);
 
-          auto Volume = geometry->nodes->GetVolume(iPoint);
+  const su2double *Coord = geometry->nodes->GetCoord(iPoint);
+  const su2double *OC = config->GetHeatSource_Center();
 
-          /*--- Subtract integrated source from the residual. ---*/
-          LinSysRes(iPoint, nDim+1) -= config->GetHeatSource_Val()*Volume;
-        }
+  const su2double x = Coord[0];
+  const su2double y = Coord[1];
 
-      }
+  const su2double x0 = OC[0];
+  const su2double y0 = OC[1];
+
+  const su2double Q0 = config->GetHeatSource_Val();
+
+  const su2double sigma_r = 0.0045;
+  const su2double x_start = x0;
+  const su2double x_end   = 0.080;
+
+  su2double Qgauss = 0.0;
+
+  if ((x >= x_start) && (x <= x_end)) {
+    Qgauss = Q0 * exp(-0.5*pow((y-y0)/sigma_r, 2.0));
+  }
+
+  LinSysRes(iPoint, nDim+1) -= Qgauss*Volume;
+}
+
 
     }
     END_SU2_OMP_FOR

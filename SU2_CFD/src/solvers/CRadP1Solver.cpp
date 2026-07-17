@@ -178,8 +178,60 @@ void CRadP1Solver::Postprocessing(CGeometry *geometry, CSolver **solver_containe
     /*--- Retrieve temperature from the flow solver ---*/
     Temperature = solver_container[FLOW_SOL]->GetNodes()->GetTemperature(iPoint);
 
-    /*--- Compute the divergence of the radiative flux ---*/
-    SourceTerm = Absorption_Coeff*(Energy - 4.0*STEFAN_BOLTZMANN*pow(Temperature,4.0));
+    /*--- Coordinate del punto ---*/
+    const su2double *Coord = geometry->nodes->GetCoord(iPoint);
+    const su2double *OC = config->GetHeatSource_Center();
+
+    su2double alpha = config->GetHeatSource_Rot_Z() * PI_NUMBER/180.0;
+
+    /*--- Coordinate locali rispetto all'inizio dell'arco ---*/
+    su2double dx = Coord[0] - OC[0];
+    su2double dy = Coord[1] - OC[1];
+
+    /*--- Rotazione nel piano 2D ---*/
+    su2double z =  dx*cos(alpha) + dy*sin(alpha);   // direzione assiale
+    su2double r = -dx*sin(alpha) + dy*cos(alpha);   // direzione radiale
+    
+    static su2double zmin = 1e9;
+    static su2double zmax = -1e9;
+
+    zmin = min(zmin,z);
+    zmax = max(zmax,z);
+
+    if ((rank == MASTER_NODE) &&
+       (iPoint == nPointDomain-1)) {
+
+      cout << "z range = "
+        << zmin
+        << "  "
+        << zmax
+        << endl;
+    }
+    
+    
+    /*--- Parametri sorgente Joule gaussiana ---*/
+    // su2double P_arc   = 37000.0;   // W, 500 A * 74 V
+    // su2double eta     = 0.60;      // frazione assorbita dal plasma
+    su2double Q0      = 5.0e10;     // W/m^3, valore iniziale da calibrare
+
+    su2double sigma_r = 0.0045;    // m, metà diametro anodo 9 mm
+    su2double L_decay = 0.020;     // m, decadimento assiale
+    su2double z_end   = 0.0388;    // m, fino all'anodo
+
+    su2double Qgauss = 0.0;
+    static su2double Qmax = 0.0;
+
+    if ((z >= 0.0) && (z <= z_end)) {
+       Qgauss =
+       Q0 *
+       exp(-0.5*pow(r/sigma_r, 2.0)) *
+       exp(-z/L_decay);
+    }
+
+    /*--- Divergenza flusso radiativo + sorgente Joule gaussiana ---*/
+    SourceTerm =
+         // Absorption_Coeff*(Energy - 4.0*STEFAN_BOLTZMANN*pow(Temperature,4.0))
+         + Qgauss;
 
     /*--- Compute the derivative of the source term with respect to the temperature ---*/
     SourceTerm_Derivative =  - 16.0*Absorption_Coeff*STEFAN_BOLTZMANN*pow(Temperature,3.0);
@@ -188,9 +240,9 @@ void CRadP1Solver::Postprocessing(CGeometry *geometry, CSolver **solver_containe
     nodes->SetRadiative_SourceTerm(iPoint, 0, SourceTerm);
     nodes->SetRadiative_SourceTerm(iPoint, 1, SourceTerm_Derivative);
 
-  }
+    }
 
-}
+  }
 
 void CRadP1Solver::Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics **numerics_container,
                                     CConfig *config, unsigned short iMesh, unsigned short iRKStep) {
@@ -558,6 +610,12 @@ void CRadP1Solver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver
     for (iVar = 0; iVar < nVar; iVar++) {
       nodes->AddSolution(iPoint, iVar, LinSysSol[iPoint*nVar+iVar]);
     }
+  }
+  
+  if ((rank == MASTER_NODE) &&
+    (iPoint == nPointDomain-1)) {
+
+   // cout << "Qmax = " << Qmax << endl;
   }
 
   /*--- The the number of iterations of the linear solver ---*/

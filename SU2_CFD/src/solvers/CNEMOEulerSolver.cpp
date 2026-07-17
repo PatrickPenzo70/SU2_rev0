@@ -762,6 +762,7 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
   const bool axisymm    = config->GetAxisymmetric();
   const bool viscous    = config->GetViscous();
   const bool rans       = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
+  const bool vol_heat = config->GetHeatSource();
 
   CNumerics* numerics = numerics_container[SOURCE_FIRST_TERM];
 
@@ -884,6 +885,40 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
       } else
         eAxi_local++;
     }
+    
+        if (vol_heat) {
+
+  // cout << "### NEMO GAUSSIAN HEAT SOURCE ACTIVE ###" << endl;
+
+  const su2double Volume = geometry->nodes->GetVolume(iPoint);
+
+  const su2double *Coord = geometry->nodes->GetCoord(iPoint);
+  const su2double *OC = config->GetHeatSource_Center();
+
+  const su2double x = Coord[0];
+  const su2double y = Coord[1];
+
+  const su2double x0 = OC[0];
+  const su2double y0 = OC[1];
+
+  const su2double Q0 = config->GetHeatSource_Val();
+  const su2double sigma_r = 0.0005;
+  const su2double x_end = x0 + 0.025;
+  const su2double x_start = x0;
+  const su2double L_decay = 0.012;
+
+  su2double Qgauss = 0.0;
+
+  if ((x >= x_start) && (x <= x_end)) {
+  Qgauss =
+    Q0 *
+    exp(-0.5*pow((y-y0)/sigma_r, 2.0)) *
+    exp(-(x-x0)/L_decay);
+    }
+
+  LinSysRes(iPoint, nSpecies+nDim) -= Qgauss*Volume;
+}
+    
   }
   END_SU2_OMP_FOR
 
