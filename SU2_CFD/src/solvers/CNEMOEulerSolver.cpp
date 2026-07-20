@@ -886,38 +886,61 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
         eAxi_local++;
     }
     
+    /*--- Gaussian Joule heat source ---*/
         if (vol_heat) {
 
-  // cout << "### NEMO GAUSSIAN HEAT SOURCE ACTIVE ###" << endl;
+          static bool heat_source_message_printed = false;
 
-  const su2double Volume = geometry->nodes->GetVolume(iPoint);
+    if (!heat_source_message_printed && rank == MASTER_NODE) {
+          cout << "### NEMO GAUSSIAN HEAT SOURCE ACTIVE ###" << endl;
+          heat_source_message_printed = true;
+       }
 
-  const su2double *Coord = geometry->nodes->GetCoord(iPoint);
-  const su2double *OC = config->GetHeatSource_Center();
+       const su2double Volume = geometry->nodes->GetVolume(iPoint);
+       const su2double *Coord = geometry->nodes->GetCoord(iPoint);
 
-  const su2double x = Coord[0];
-  const su2double y = Coord[1];
+       const su2double *OC      = config->GetHeatSource_Center();
+       const su2double *HSParam = config->GetHeatSource_Axes();
 
-  const su2double x0 = OC[0];
-  const su2double y0 = OC[1];
+       const su2double x = Coord[0];
+       const su2double y = Coord[1];
 
-  const su2double Q0 = config->GetHeatSource_Val();
-  const su2double sigma_r = 0.0005;
-  const su2double x_end = x0 + 0.025;
-  const su2double x_start = x0;
-  const su2double L_decay = 0.012;
+       const su2double x0 = OC[0];
+       const su2double y0 = OC[1];
 
-  su2double Qgauss = 0.0;
+       const su2double Q0 = config->GetHeatSource_Val();
 
-  if ((x >= x_start) && (x <= x_end)) {
-  Qgauss =
-    Q0 *
-    exp(-0.5*pow((y-y0)/sigma_r, 2.0)) *
-    exp(-(x-x0)/L_decay);
+  /*
+   * HEAT_SOURCE_AXES:
+   * [0] = x_end
+   * [1] = sigma_r
+   * [2] = L_decay
+   */
+       const su2double x_start = x0;
+       const su2double x_end   = HSParam[0];
+       const su2double sigma_r = HSParam[1];
+       const su2double L_decay = HSParam[2];
+
+       su2double Qgauss = 0.0;
+
+    if ((sigma_r > 0.0) &&
+         (L_decay > 0.0) &&
+         (x_end > x_start) &&
+         (x >= x_start) &&
+         (x <= x_end)) {
+
+       const su2double radial_profile =
+          exp(-0.5 * pow((y - y0) / sigma_r, 2.0));
+
+       const su2double axial_profile =
+          exp(-(x - x_start) / L_decay);
+
+       Qgauss = Q0 * radial_profile * axial_profile;
+     }
+
+    /* Add heat to total-energy equation. */
+      LinSysRes(iPoint, nSpecies + nDim) -= Qgauss * Volume;
     }
-
-  LinSysRes(iPoint, nSpecies+nDim) -= Qgauss*Volume;
-}
     
   }
   END_SU2_OMP_FOR
