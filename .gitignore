@@ -110,3 +110,6 @@ ninja-win.zip
 ninja.exe
 .gitignore
 Docs/html
+
+# Restart files
+PRIMO_TEST/output/convergence_rn/history_*.csv
