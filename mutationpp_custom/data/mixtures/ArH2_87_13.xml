@@ -1,0 +1,16 @@
+<mixture state_model="ChemNonEqTTv"
+         thermo_db="RRHO"
+         transport_db="wright"
+         mechanism="ArH2_neutral_min">
+
+    <species>
+        Ar H2 H
+    </species>
+
+    <element_compositions default="ArH2_87_13">
+        <composition name="ArH2_87_13" type="mole">
+            Ar:0.87, H:0.13
+        </composition>
+    </element_compositions>
+
+</mixture>

@@ -1,0 +1,134 @@
+<collisions>
+
+    <global-options>
+        <integral type="table"
+                  interpolator="Linear"
+                  clip="true"/>
+    </global-options>
+
+    <defaults>
+
+        <!-- ========================================= -->
+        <!-- Collisioni neutro-neutro                 -->
+        <!-- Valori costanti solamente diagnostici    -->
+        <!-- ========================================= -->
+        <neutral-neutral>
+
+            <Q11 type="constant"
+                 value="1.0e-20"/>
+
+            <Q12 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q13 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q22 type="ratio"
+                 ratio="1.1"
+                 integral="Q11"/>
+
+            <Ast type="constant"
+                 value="1.0"/>
+
+            <Bst type="constant"
+                 value="1.0"/>
+
+            <Cst type="constant"
+                 value="1.0"/>
+
+        </neutral-neutral>
+
+        <!-- ========================================= -->
+        <!-- Collisioni ione-neutro                    -->
+        <!-- ========================================= -->
+        <ion-neutral>
+
+            <Q11 type="constant"
+                 value="1.0e-20"/>
+
+            <Q12 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q13 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q22 type="ratio"
+                 ratio="1.1"
+                 integral="Q11"/>
+
+            <Ast type="constant"
+                 value="1.0"/>
+
+            <Bst type="constant"
+                 value="1.0"/>
+
+            <Cst type="constant"
+                 value="1.0"/>
+
+        </ion-neutral>
+
+        <!-- ========================================= -->
+        <!-- Collisioni elettrone-neutro               -->
+        <!-- ========================================= -->
+        <electron-neutral>
+
+            <Q11 type="constant"
+                 value="1.0e-20"/>
+
+            <Q12 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q13 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q14 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q15 type="ratio"
+                 ratio="1.0"
+                 integral="Q11"/>
+
+            <Q22 type="ratio"
+                 ratio="1.1"
+                 integral="Q11"/>
+
+            <Ast type="constant"
+                 value="1.0"/>
+
+            <Bst type="constant"
+                 value="1.0"/>
+
+            <Cst type="constant"
+                 value="1.0"/>
+
+        </electron-neutral>
+
+        <!-- ========================================= -->
+        <!-- Collisioni tra particelle cariche         -->
+        <!-- ========================================= -->
+        <charged>
+
+            <Q11 type="Debye-Huckel"/>
+            <Q12 type="Debye-Huckel"/>
+            <Q13 type="Debye-Huckel"/>
+            <Q14 type="Debye-Huckel"/>
+            <Q15 type="Debye-Huckel"/>
+
+            <Q22 type="Debye-Huckel"/>
+
+            <Ast type="Debye-Huckel"/>
+            <Bst type="Debye-Huckel"/>
+            <Cst type="Debye-Huckel"/>
+
+        </charged>
+
+    </defaults>
+
+</collisions>
