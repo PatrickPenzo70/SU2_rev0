@@ -117,3 +117,5 @@ PRIMO_TEST/output/convergence_rn/history_*.csv
 # Output files
 PRIMO_TEST/output/
 PRIMO_TEST/vtk/
+history.csv
+PRIMO_TEST/output/restart.csv
