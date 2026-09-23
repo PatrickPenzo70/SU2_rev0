@@ -1515,6 +1515,29 @@ void CNEMOEulerSolver::BC_Sym_Plane(CGeometry *geometry, CSolver **solver_contai
       /*--- Add value to the residual ---*/
       LinSysRes.AddBlock(iPoint, Residual);
 
+      /*--- Explicitly set the momentum normal to the symmetry plane to zero. Without this the
+       * problem is underconstrained (the normal residual vanishes regardless of the normal
+       * velocity) and rho*v drifts without bound on the axis in axisymmetric cases.
+      */
+      su2double* solutionOld = nodes->GetSolution_Old(iPoint);
+      su2double vp = 0.0;
+      for (auto iDim = 0ul; iDim < nDim; iDim++)
+        vp += solutionOld[nSpecies+iDim] * UnitNormal[iDim];
+      for (auto iDim = 0ul; iDim < nDim; iDim++)
+        solutionOld[nSpecies+iDim] -= vp * UnitNormal[iDim];
+
+      /*--- Keep only the tangential part of the momentum residual. ---*/
+      su2double normalRes = 0.0;
+      for (auto iDim = 0ul; iDim < nDim; iDim++)
+        normalRes += LinSysRes(iPoint, nSpecies+iDim) * UnitNormal[iDim];
+      for (auto iDim = 0ul; iDim < nDim; iDim++)
+        LinSysRes(iPoint, nSpecies+iDim) -= normalRes * UnitNormal[iDim];
+
+      /*--- NOTE: the matching projection of the assembled Jacobian block, J = (I - n n^T) J,
+       * is not applied here. It only matters for EULER_IMPLICIT; with an explicit scheme the
+       * two corrections above are sufficient. ---
+      */
+
       /*--- If using implicit time-stepping, calculate b.c. contribution to Jacobian ---*/
       if (implicit) {
 
