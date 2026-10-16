@@ -32,6 +32,52 @@
 #include "../../include/fluid/CMutationTCLib.hpp"
 #include "../../include/fluid/CSU2TCLib.hpp"
 
+namespace {
+
+/*!
+ * \brief Smoothed Heaviside step, 0.5*(1 + tanh(s/delta)); a sharp step if delta <= 0.
+ */
+su2double SmoothStep(su2double s, su2double delta) {
+  if (delta > 0.0) return 0.5 * (1.0 + tanh(s / delta));
+  return (s >= 0.0) ? 1.0 : 0.0;
+}
+
+/*!
+ * \brief Shape (unit amplitude) of the arc Joule heat source at a point.
+ *
+ * Q(x,r) = Q0 * exp(-0.5*((r - y0)/sigma_r)^2)
+ *             * 0.5*(1 + tanh((x - x_start)/delta_on))
+ *             * exp(-(x - x_start)/L_decay)
+ *             * 0.5*(1 - tanh((x - x_end)/delta_off))
+ *
+ * HEAT_SOURCE_CENTER = (x_start, y0, -), HEAT_SOURCE_AXES = (x_end, sigma_r, L_decay),
+ * HEAT_SOURCE_RAMP = (delta_on, delta_off). Zero ramp widths give the old sharp window [x_start, x_end].
+ */
+su2double ArcHeatSourceShape(const CConfig* config, const su2double* Coord) {
+  const su2double* OC      = config->GetHeatSource_Center();
+  const su2double* HSParam = config->GetHeatSource_Axes();
+  const su2double* Ramp    = config->GetHeatSource_Ramp();
+
+  const su2double x_start = OC[0];
+  const su2double y0      = OC[1];
+  const su2double x_end   = HSParam[0];
+  const su2double sigma_r = HSParam[1];
+  const su2double L_decay = HSParam[2];
+
+  const su2double x = Coord[0];
+  const su2double y = Coord[1];
+
+  const su2double radial_profile = exp(-0.5 * pow((y - y0) / sigma_r, 2.0));
+
+  const su2double axial_profile = SmoothStep(x - x_start, Ramp[0]) *
+                                  exp(-(x - x_start) / L_decay) *
+                                  SmoothStep(x_end - x, Ramp[1]);
+
+  return radial_profile * axial_profile;
+}
+
+}  // namespace
+
 CNEMOEulerSolver::CNEMOEulerSolver(CGeometry *geometry, CConfig *config,
                            unsigned short iMesh, const bool navier_stokes) :
   CFVMFlowSolverBase<CNEMOEulerVariable, ENUM_REGIME::COMPRESSIBLE>(*geometry, *config) {
@@ -779,6 +825,48 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
     ComputeAxisymmetricAuxGradients(geometry,config);
   }
 
+  /*--- Arc heat source: on the first call check the parameters, set the amplitude
+   * (from HEAT_SOURCE_POWER if given) and report the deposited power. ---*/
+  if (vol_heat && ArcHeatSourceAmp < 0.0) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    {
+      const su2double x_start = config->GetHeatSource_Center()[0];
+      const su2double* HSParam = config->GetHeatSource_Axes();
+      const su2double* Ramp = config->GetHeatSource_Ramp();
+
+      if ((HSParam[1] <= 0.0) || (HSParam[2] <= 0.0) || (HSParam[0] <= x_start))
+        SU2_MPI::Error("Arc heat source needs sigma_r > 0, L_decay > 0 and x_end > x_start.", CURRENT_FUNCTION);
+      if (Ramp[0] >= HSParam[2])
+        SU2_MPI::Error("HEAT_SOURCE_RAMP: delta_on must be smaller than L_decay,\n"
+                       "otherwise the source does not vanish upstream of x_start.", CURRENT_FUNCTION);
+
+      /*--- Integral of the shape: 2*pi*r weight if axisymmetric, per unit depth otherwise. ---*/
+      su2double shapeIntegral_local = 0.0, shapeIntegral = 0.0;
+      for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
+        const su2double* Coord = geometry->nodes->GetCoord(iPoint);
+        const su2double weight = axisymm ? 2.0 * PI_NUMBER * Coord[1] : 1.0;
+        shapeIntegral_local += ArcHeatSourceShape(config, Coord) * geometry->nodes->GetVolume(iPoint) * weight;
+      }
+      SU2_MPI::Allreduce(&shapeIntegral_local, &shapeIntegral, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+
+      const su2double Power = config->GetHeatSource_Power();
+      if ((Power > 0.0) && (shapeIntegral <= 0.0))
+        SU2_MPI::Error("Arc heat source does not overlap the mesh, cannot impose HEAT_SOURCE_POWER.", CURRENT_FUNCTION);
+
+      ArcHeatSourceAmp = (Power > 0.0) ? Power / shapeIntegral : config->GetHeatSource_Val();
+
+      if ((rank == MASTER_NODE) && (iMesh == MESH_0)) {
+        cout << "### NEMO ARC HEAT SOURCE (tanh ramps) ACTIVE ###\n"
+             << "    x_start = " << x_start << " m, x_end = " << HSParam[0] << " m, L_decay = " << HSParam[2]
+             << " m, sigma_r = " << HSParam[1] << " m\n"
+             << "    delta_on = " << Ramp[0] << " m, delta_off = " << Ramp[1] << " m\n"
+             << "    amplitude Q0 = " << ArcHeatSourceAmp << " W/m^3, deposited power = "
+             << ArcHeatSourceAmp * shapeIntegral << (axisymm ? " W" : " W/m") << endl;
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  }
+
   AD::StartNoSharedReading();
 
   /*--- loop over interior points ---*/
@@ -886,60 +974,12 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
         eAxi_local++;
     }
     
-    /*--- Gaussian Joule heat source ---*/
-        if (vol_heat) {
+    /*--- Arc Joule heat source, added to the total-energy equation ---*/
+    if (vol_heat) {
+      const su2double Volume = geometry->nodes->GetVolume(iPoint);
+      const su2double Qarc = ArcHeatSourceAmp * ArcHeatSourceShape(config, geometry->nodes->GetCoord(iPoint));
 
-          static bool heat_source_message_printed = false;
-
-    if (!heat_source_message_printed && rank == MASTER_NODE) {
-          cout << "### NEMO GAUSSIAN HEAT SOURCE ACTIVE ###" << endl;
-          heat_source_message_printed = true;
-       }
-
-       const su2double Volume = geometry->nodes->GetVolume(iPoint);
-       const su2double *Coord = geometry->nodes->GetCoord(iPoint);
-
-       const su2double *OC      = config->GetHeatSource_Center();
-       const su2double *HSParam = config->GetHeatSource_Axes();
-
-       const su2double x = Coord[0];
-       const su2double y = Coord[1];
-
-       const su2double x0 = OC[0];
-       const su2double y0 = OC[1];
-
-       const su2double Q0 = config->GetHeatSource_Val();
-
-  /*
-   * HEAT_SOURCE_AXES:
-   * [0] = x_end
-   * [1] = sigma_r
-   * [2] = L_decay
-   */
-       const su2double x_start = x0;
-       const su2double x_end   = HSParam[0];
-       const su2double sigma_r = HSParam[1];
-       const su2double L_decay = HSParam[2];
-
-       su2double Qgauss = 0.0;
-
-    if ((sigma_r > 0.0) &&
-         (L_decay > 0.0) &&
-         (x_end > x_start) &&
-         (x >= x_start) &&
-         (x <= x_end)) {
-
-       const su2double radial_profile =
-          exp(-0.5 * pow((y - y0) / sigma_r, 2.0));
-
-       const su2double axial_profile =
-          exp(-(x - x_start) / L_decay);
-
-       Qgauss = Q0 * radial_profile * axial_profile;
-     }
-
-    /* Add heat to total-energy equation. */
-      LinSysRes(iPoint, nSpecies + nDim) -= Qgauss * Volume;
+      LinSysRes(iPoint, nSpecies + nDim) -= Qarc * Volume;
     }
     
   }

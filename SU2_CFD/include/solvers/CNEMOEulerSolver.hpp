@@ -60,6 +60,8 @@ protected:
 
   CNEMOEulerVariable* node_infty = nullptr;
 
+  su2double ArcHeatSourceAmp = -1.0; /*!< \brief Amplitude (W/m^3) of the arc heat source, set on the first call of Source_Residual. */
+
   /*!
    * \brief Set the maximum value of the eigenvalue.
    * \param[in] geometry - Geometrical definition of the problem.

@@ -1173,6 +1173,7 @@ private:
   su2double top_optim_proj_param;      /*!< \brief The value of the parameter for the projection function. */
   bool HeatSource;                     /*!< \brief Flag to know if there is a volumetric heat source on the flow. */
   su2double ValHeatSource;             /*!< \brief Value of the volumetric heat source on the flow (W/m3). */
+  su2double PowerHeatSource;           /*!< \brief Total power of the arc heat source (W); if > 0 it overrides the amplitude ValHeatSource. */
   su2double Heat_Source_Rot_Z;         /*!< \brief Rotation of the volumetric heat source on the Z axis. */
   RADIATION_MODEL Kind_Radiation;      /*!< \brief Kind of radiation model used. */
   P1_INIT Kind_P1_Init;                /*!< \brief Kind of initialization used in the P1 model. */
@@ -1208,7 +1209,8 @@ private:
   body_force[3],         /*!< \brief body force vector for the COption class. */
   nacelle_location[5],   /*!< \brief Location of the nacelle. */
   hs_axes[3],            /*!< \brief principal axes (x, y, z) of the ellipsoid containing the heat source. */
-  hs_center[3];          /*!< \brief position of the center of the heat source. */
+  hs_center[3],          /*!< \brief position of the center of the heat source. */
+  hs_ramp[2];            /*!< \brief widths (on, off) of the tanh ramps of the arc heat source. */
 
   UPWIND Riemann_Solver_FEM;         /*!< \brief Riemann solver chosen for the DG method. */
   su2double Quadrature_Factor_Straight;      /*!< \brief Factor applied during quadrature of elements with a constant Jacobian. */
@@ -6522,6 +6524,18 @@ public:
    * \return Value of the volumetric heat source
    */
   inline su2double GetHeatSource_Val(void) const {return ValHeatSource;}
+
+  /*!
+   * \brief Get the total power of the arc heat source.
+   * \return Total power (W); a value <= 0 means that the amplitude HEAT_SOURCE_VAL is used.
+   */
+  inline su2double GetHeatSource_Power(void) const {return PowerHeatSource;}
+
+  /*!
+   * \brief Get the widths of the tanh ramps that switch the arc heat source on and off.
+   * \return Pointer to the widths (delta_on, delta_off); a width <= 0 gives a sharp step.
+   */
+  inline const su2double* GetHeatSource_Ramp(void) const {return hs_ramp;}
 
   /*!
    * \brief Get the rotation angle of the volumetric heat source in axis Z.

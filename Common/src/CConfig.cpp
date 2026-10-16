@@ -2774,6 +2774,11 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Vector of heat source radii (Heat_Source_Axes_A, Heat_Source_Axes_B, Heat_Source_Axes_C) */
   hs_axes[0] = 1.0; hs_axes[1] = 1.0; hs_axes[2] = 1.0;
   addDoubleArrayOption("HEAT_SOURCE_AXES", 3, false, hs_axes);
+  /* DESCRIPTION: Widths of the tanh ramps that switch the arc heat source on (at x_start) and off (at x_end), 0 = sharp step */
+  hs_ramp[0] = 0.0; hs_ramp[1] = 0.0;
+  addDoubleArrayOption("HEAT_SOURCE_RAMP", 2, false, hs_ramp);
+  /* DESCRIPTION: Total power of the arc heat source (W), if > 0 the amplitude HEAT_SOURCE_VAL is computed from it */
+  addDoubleOption("HEAT_SOURCE_POWER", PowerHeatSource, 0.0);
 
   /*!\brief MARKER_EMISSIVITY DESCRIPTION: Wall emissivity of the marker for radiation purposes \n
    * Format: ( marker, emissivity of the marker, ... ) \ingroup Config  */
