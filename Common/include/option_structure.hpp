@@ -2902,6 +2902,14 @@ static const MapType<std::string, DEFORM_KIND> Deform_Kind_Map = {
   MakePair("RBF",       DEFORM_KIND::RBF)
 };
 
+/*!
+* \brief Type of heat source 
+*/
+enum class HEAT_SOURCE_MODEL { TANH_DECAY, GAUSSIAN_ARC };
+static const MapType<std::string, HEAT_SOURCE_MODEL> HeatSourceModel_Map = {
+  MakePair("TANH_DECAY",   HEAT_SOURCE_MODEL::TANH_DECAY) /*!< \brief Tanh decay heat source model. */
+  MakePair("GAUSSIAN_ARC", HEAT_SOURCE_MODEL::GAUSSIAN_ARC) /*!< \brief Gaussian arc heat source model. */
+};
 
 #undef MakePair
 /* END_CONFIG_ENUMS */
