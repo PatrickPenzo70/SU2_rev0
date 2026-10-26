@@ -1174,6 +1174,12 @@ private:
   bool HeatSource;                     /*!< \brief Flag to know if there is a volumetric heat source on the flow. */
   su2double ValHeatSource;             /*!< \brief Value of the volumetric heat source on the flow (W/m3). */
   su2double PowerHeatSource;           /*!< \brief Total power of the arc heat source (W); if > 0 it overrides the amplitude ValHeatSource. */
+    HEAT_SOURCE_MODEL Kind_HeatSourceModel; /*!< \brief Shape of the arc heat source (TANH_DECAY, GAUSSIAN_ARC). */
+  su2double HeatSource_Origin;            /*!< \brief x of the cathode tip, z = x - x_tip (m). */
+  std::array<su2double,2> hs_arc_start{}; /*!< \brief (L_s, n): f_z(z) = 1 - exp(-(z/L_s)^n). */
+  std::array<su2double,2> hs_arc_peak{};  /*!< \brief (r_p0, L_c): r_p(z) = r_p0 exp(-z/L_c). */
+  std::array<su2double,4> hs_arc_width{}; /*!< \brief (s0, k_s, s_A, L_w): s(z) = s0 + k_s z + s_A exp(-(L-z)/L_w). */
+  std::array<su2double,3> hs_arc_end{};   /*!< \brief (L, z_end, delta_off): reference length and tanh cut-off. */
   su2double Heat_Source_Rot_Z;         /*!< \brief Rotation of the volumetric heat source on the Z axis. */
   RADIATION_MODEL Kind_Radiation;      /*!< \brief Kind of radiation model used. */
   P1_INIT Kind_P1_Init;                /*!< \brief Kind of initialization used in the P1 model. */
@@ -6535,7 +6541,30 @@ public:
    * \brief Get the widths of the tanh ramps that switch the arc heat source on and off.
    * \return Pointer to the widths (delta_on, delta_off); a width <= 0 gives a sharp step.
    */
-  inline const su2double* GetHeatSource_Ramp(void) const {return hs_ramp;}
+  inline const su2double* GetHeatSource_Ramp(void) const {return hs_ramp;} 
+
+  /*!
+   * \brief Get the model used for the shape of the arc heat source.
+   */
+  inline HEAT_SOURCE_MODEL GetKind_HeatSourceModel(void) const { return Kind_HeatSourceModel; }
+
+  /*!
+   * \brief Get the axial coordinate of the cathode tip, origin z = 0 of the GAUSSIAN_ARC model (m).
+   */
+  inline su2double GetHeatSource_Origin(void) const { return HeatSource_Origin; }
+
+  /*! \brief Get (L_s, n) of the axial switch-on f_z(z). */
+  inline const std::array<su2double,2>& GetHeatSource_ArcStart(void) const { return hs_arc_start; }
+
+  /*! \brief Get (r_p0, L_c) of the radial peak position r_p(z). */
+  inline const std::array<su2double,2>& GetHeatSource_ArcPeak(void) const { return hs_arc_peak; }
+
+  /*! \brief Get (s0, k_s, s_A, L_w) of the Gaussian width s(z). */
+  inline const std::array<su2double,4>& GetHeatSource_ArcWidth(void) const { return hs_arc_width; }
+
+  /*! \brief Get (L, z_end, delta_off) of the GAUSSIAN_ARC model. */
+  inline const std::array<su2double,3>& GetHeatSource_ArcEnd(void) const { return hs_arc_end; }
+
 
   /*!
    * \brief Get the rotation angle of the volumetric heat source in axis Z.
@@ -10286,5 +10315,6 @@ public:
    * \return FLAMELET_ENTHALPY_BC enum value.
    */
   FLAMELET_ENTHALPY_BC GetFlamelet_Enthalpy_BC() const { return flamelet_ParsedOptions.enthalpy_bc; }
+  
 
 };

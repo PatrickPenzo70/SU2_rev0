@@ -2780,6 +2780,23 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Total power of the arc heat source (W), if > 0 the amplitude HEAT_SOURCE_VAL is computed from it */
   addDoubleOption("HEAT_SOURCE_POWER", PowerHeatSource, 0.0);
 
+  /* DESCRIPTION: Shape of the arc heat source: TANH_DECAY (default) or GAUSSIAN_ARC (equivalent arc q_J) */
+  addEnumOption("HEAT_SOURCE_MODEL", Kind_HeatSourceModel, HeatSourceModel_Map, HEAT_SOURCE_MODEL::TANH_DECAY);
+  /* DESCRIPTION: Axial coordinate of the cathode tip (m), origin z = 0 of the GAUSSIAN_ARC model */
+  addDoubleOption("HEAT_SOURCE_ORIGIN", HeatSource_Origin, 0.0);
+  /* DESCRIPTION: GAUSSIAN_ARC axial switch-on (L_s [m], n [-]) */
+  hs_arc_start.fill(0.0);
+  addDoubleArrayOption("HEAT_SOURCE_ARC_START", 2, false, hs_arc_start.data());
+  /* DESCRIPTION: GAUSSIAN_ARC radial peak position (r_p0 [m], L_c [m]) */
+  hs_arc_peak.fill(0.0);
+  addDoubleArrayOption("HEAT_SOURCE_ARC_PEAK", 2, false, hs_arc_peak.data());
+  /* DESCRIPTION: GAUSSIAN_ARC Gaussian width (s0 [m], k_s [-], s_A [m], L_w [m]) */
+  hs_arc_width.fill(0.0);
+  addDoubleArrayOption("HEAT_SOURCE_ARC_WIDTH", 4, false, hs_arc_width.data());
+  /* DESCRIPTION: GAUSSIAN_ARC end (L [m], z_end [m], delta_off [m]) */
+  hs_arc_end.fill(0.0);
+  addDoubleArrayOption("HEAT_SOURCE_ARC_END", 3, false, hs_arc_end.data());
+
   /*!\brief MARKER_EMISSIVITY DESCRIPTION: Wall emissivity of the marker for radiation purposes \n
    * Format: ( marker, emissivity of the marker, ... ) \ingroup Config  */
   addStringDoubleListOption("MARKER_EMISSIVITY", nMarker_Emissivity, Marker_Emissivity, Wall_Emissivity);
