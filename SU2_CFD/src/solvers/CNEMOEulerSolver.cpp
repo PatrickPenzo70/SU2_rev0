@@ -76,6 +76,51 @@ su2double ArcHeatSourceShape(const CConfig* config, const su2double* Coord) {
   return radial_profile * axial_profile;
 }
 
+/*!
+ * \brief Parameters of the GAUSSIAN_ARC heat source, read from the config (lengths in m).
+ */
+struct GaussianArcParams {
+  su2double x_tip, Ls, n, rp0, Lc, s0, ks, sA, Lw, L, z_end, d_off;
+};
+
+GaussianArcParams ReadGaussianArc(const CConfig* config) {
+  const auto& st = config->GetHeatSource_ArcStart();   // (L_s, n)
+  const auto& pk = config->GetHeatSource_ArcPeak();    // (r_p0, L_c)
+  const auto& wd = config->GetHeatSource_ArcWidth();   // (s0, k_s, s_A, L_w)
+  const auto& en = config->GetHeatSource_ArcEnd();     // (L, z_end, delta_off)
+  return {config->GetHeatSource_Origin(), st[0], st[1], pk[0], pk[1],
+          wd[0], wd[1], wd[2], wd[3], en[0], en[1], en[2]};
+}
+
+/*!
+ * \brief Shape (unit amplitude) of the equivalent Gaussian arc source:
+ * q_J/A = f_z(z) * exp(-(r - r_p(z))^2 / (2 s(z)^2)) * 0.5*(1 - tanh((z - z_end)/delta_off)),  z = x - x_tip.
+ */
+su2double GaussianArcShape(const GaussianArcParams& p, const su2double* Coord) {
+  const su2double z = Coord[0] - p.x_tip;
+  const su2double r = Coord[1];
+  if (z <= 0.0) return 0.0;                       // behind the cathode tip, to avoid unwanted NaNs
+
+  const su2double fz  = 1.0 - exp(-pow(z / p.Ls, p.n));
+  const su2double rp  = p.rp0 * exp(-z / p.Lc);
+  const su2double zs  = min(z, p.L);              // beyond L keep s = s(L): the exponential would blow up
+  const su2double s   = p.s0 + p.ks * zs + p.sA * exp(-(p.L - zs) / p.Lw);
+  const su2double cut = SmoothStep(p.z_end - z, p.d_off);
+
+  return fz * exp(-0.5 * pow((r - rp) / s, 2.0)) * cut;
+}
+
+/*!
+ * \brief Shape of the heat source selected by HEAT_SOURCE_MODEL.
+ */
+su2double HeatSourceShape(const CConfig* config, const su2double* Coord) {
+  switch (config->GetKind_HeatSourceModel()) {
+    case HEAT_SOURCE_MODEL::GAUSSIAN_ARC: return GaussianArcShape(ReadGaussianArc(config), Coord);
+    case HEAT_SOURCE_MODEL::TANH_DECAY:   return ArcHeatSourceShape(config, Coord);
+  }
+  return 0.0;
+}
+
 }  // namespace
 
 CNEMOEulerSolver::CNEMOEulerSolver(CGeometry *geometry, CConfig *config,
@@ -833,19 +878,30 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
       const su2double x_start = config->GetHeatSource_Center()[0];
       const su2double* HSParam = config->GetHeatSource_Axes();
       const su2double* Ramp = config->GetHeatSource_Ramp();
+      const auto model = config->GetKind_HeatSourceModel();
 
-      if ((HSParam[1] <= 0.0) || (HSParam[2] <= 0.0) || (HSParam[0] <= x_start))
-        SU2_MPI::Error("Arc heat source needs sigma_r > 0, L_decay > 0 and x_end > x_start.", CURRENT_FUNCTION);
-      if (Ramp[0] >= HSParam[2])
-        SU2_MPI::Error("HEAT_SOURCE_RAMP: delta_on must be smaller than L_decay,\n"
-                       "otherwise the source does not vanish upstream of x_start.", CURRENT_FUNCTION);
+      if (model == HEAT_SOURCE_MODEL::TANH_DECAY) {
+        if ((HSParam[1] <= 0.0) || (HSParam[2] <= 0.0) || (HSParam[0] <= x_start))
+          SU2_MPI::Error("Arc heat source needs sigma_r > 0, L_decay > 0 and x_end > x_start.", CURRENT_FUNCTION);
+        if (Ramp[0] >= HSParam[2])
+          SU2_MPI::Error("HEAT_SOURCE_RAMP: delta_on must be smaller than L_decay,\n"
+                         "otherwise the source does not vanish upstream of x_start.", CURRENT_FUNCTION);
+      } else {
+        const GaussianArcParams p = ReadGaussianArc(config);
+        if ((p.Ls <= 0.0) || (p.n <= 0.0) || (p.Lc <= 0.0) || (p.s0 <= 0.0) || (p.Lw <= 0.0) ||
+            (p.L <= 0.0) || (p.d_off <= 0.0) || (p.rp0 < 0.0) || (p.ks < 0.0) || (p.sA < 0.0))
+          SU2_MPI::Error("GAUSSIAN_ARC: L_s, n, L_c, s0, L_w, L, delta_off must be > 0 and r_p0, k_s, s_A >= 0.\n"
+                         "Check HEAT_SOURCE_ARC_START/PEAK/WIDTH/END in the config file.", CURRENT_FUNCTION);
+        if ((p.z_end <= 0.0) || (p.z_end > p.L))
+          SU2_MPI::Error("GAUSSIAN_ARC: z_end must satisfy 0 < z_end <= L.", CURRENT_FUNCTION);
+      }
 
       /*--- Integral of the shape: 2*pi*r weight if axisymmetric, per unit depth otherwise. ---*/
       su2double shapeIntegral_local = 0.0, shapeIntegral = 0.0;
       for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
         const su2double* Coord = geometry->nodes->GetCoord(iPoint);
         const su2double weight = axisymm ? 2.0 * PI_NUMBER * Coord[1] : 1.0;
-        shapeIntegral_local += ArcHeatSourceShape(config, Coord) * geometry->nodes->GetVolume(iPoint) * weight;
+        shapeIntegral_local += HeatSourceShape(config, Coord) * geometry->nodes->GetVolume(iPoint) * weight;
       }
       SU2_MPI::Allreduce(&shapeIntegral_local, &shapeIntegral, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
 
@@ -856,11 +912,21 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
       ArcHeatSourceAmp = (Power > 0.0) ? Power / shapeIntegral : config->GetHeatSource_Val();
 
       if ((rank == MASTER_NODE) && (iMesh == MESH_0)) {
-        cout << "### NEMO ARC HEAT SOURCE (tanh ramps) ACTIVE ###\n"
-             << "    x_start = " << x_start << " m, x_end = " << HSParam[0] << " m, L_decay = " << HSParam[2]
-             << " m, sigma_r = " << HSParam[1] << " m\n"
-             << "    delta_on = " << Ramp[0] << " m, delta_off = " << Ramp[1] << " m\n"
-             << "    amplitude Q0 = " << ArcHeatSourceAmp << " W/m^3, deposited power = "
+        if (model == HEAT_SOURCE_MODEL::TANH_DECAY) {
+          cout << "### NEMO ARC HEAT SOURCE (tanh ramps) ACTIVE ###\n"
+               << "    x_start = " << x_start << " m, x_end = " << HSParam[0] << " m, L_decay = " << HSParam[2]
+               << " m, sigma_r = " << HSParam[1] << " m\n"
+               << "    delta_on = " << Ramp[0] << " m, delta_off = " << Ramp[1] << " m\n";
+        } else {
+          const GaussianArcParams p = ReadGaussianArc(config);
+          cout << "### NEMO ARC HEAT SOURCE (GAUSSIAN_ARC) ACTIVE ###\n"
+               << "    x_tip = " << p.x_tip << " m, L = " << p.L << " m, z_end = " << p.z_end
+               << " m, delta_off = " << p.d_off << " m\n"
+               << "    L_s = " << p.Ls << " m, n = " << p.n << ", r_p0 = " << p.rp0 << " m, L_c = " << p.Lc << " m\n"
+               << "    s0 = " << p.s0 << " m, k_s = " << p.ks << ", s_A = " << p.sA << " m, L_w = " << p.Lw << " m\n";
+        }
+        cout << "    amplitude = " << ArcHeatSourceAmp << " W/m^3, V_eff = " << shapeIntegral
+             << (axisymm ? " m^3" : " m^2") << ", deposited power = "
              << ArcHeatSourceAmp * shapeIntegral << (axisymm ? " W" : " W/m") << endl;
       }
     }
@@ -977,7 +1043,7 @@ void CNEMOEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_con
     /*--- Arc Joule heat source, added to the total-energy equation ---*/
     if (vol_heat) {
       const su2double Volume = geometry->nodes->GetVolume(iPoint);
-      const su2double Qarc = ArcHeatSourceAmp * ArcHeatSourceShape(config, geometry->nodes->GetCoord(iPoint));
+      const su2double Qarc = ArcHeatSourceAmp * HeatSourceShape(config, geometry->nodes->GetCoord(iPoint));
 
       LinSysRes(iPoint, nSpecies + nDim) -= Qarc * Volume;
     }
